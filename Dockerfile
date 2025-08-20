@@ -1,21 +1,38 @@
-FROM python:3.9.10-slim
+FROM python:3.10-slim
 
-ENV PYTHONUNBUFFERED 1
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8000
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install Poetry
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install poetry==1.8.3
+
+# Set Poetry to create venv in project
+RUN poetry config virtualenvs.in-project true
+
+# Create working directory
 WORKDIR /app
 
+# Copy only dependency files first for caching
+COPY pyproject.toml poetry.lock ./
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends netcat && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Install dependencies (no dev deps)
+RUN poetry install --no-dev --no-root
 
-COPY poetry.lock pyproject.toml ./
-RUN pip install poetry==1.1 && \
-    poetry config virtualenvs.in-project true && \
-    poetry install --no-dev
+# Copy the rest of the app
+COPY . .
 
-COPY . ./
+# Expose port
+EXPOSE 8000
 
-CMD poetry run alembic upgrade head && \
-    poetry run uvicorn --host=0.0.0.0 app.main:app
+# Command to run the app
+CMD ["poetry", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
